@@ -1,0 +1,10 @@
+default_sleep = 10
+headless = False
+fast = True
+proxy = ''
+extension_password = "P9SmgetQn7"
+phoenix_url = 'https://app.phoenix.trade/market/4DoNfFBfF7UokCC2FQzriy7yHK6DY6NVdYpuekQ5pRgg'
+slow_mo = 600
+attempts_number_restore = 10
+sol_to_sell = 0.001
+usdc_to_sell = 0.5
