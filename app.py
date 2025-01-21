@@ -28,9 +28,11 @@ async def process_wallet(wallet):
     """Обрабатывает конкретный кошелек."""
     logger.info(f"{wallet.address} | Starting wallet processing...")
 
-    user_data_dir = f"profiles/{wallet.address}"  # Путь к профилю
+    # Путь к профилю
+    user_data_dir = os.path.join("profiles", wallet.address)
     logger.info(f"Profile path: {os.path.abspath(user_data_dir)}")
 
+    # Проверка существования профиля
     profile_exists = os.path.exists(user_data_dir)
     if profile_exists:
         logger.info(f"{wallet.address} | Profile exists. Using existing profile.")
@@ -38,6 +40,7 @@ async def process_wallet(wallet):
         logger.info(f"{wallet.address} | Profile does not exist. Creating new profile.")
 
     async with async_playwright() as p:
+        # Настройка прокси (если указано)
         proxy = None
         if settings.proxy:
             proxy = await utils.format_proxy(settings.proxy)
@@ -51,13 +54,14 @@ async def process_wallet(wallet):
             args=[
                 f"--disable-extensions-except={extension_path}",
                 f"--load-extension={extension_path}",
-                "--no-sandbox",  # Добавляем защиту от использования глобального состояния
+                "--no-sandbox",
             ],
         )
 
         try:
             trade = PhoenixTrade(browser, wallet)
 
+            # Логика при отсутствии профиля
             if not profile_exists:
                 logger.info(f"{wallet.address} | Profile not found. Restoring wallet...")
                 restored = await restore_wallet(browser, wallet)
@@ -65,17 +69,29 @@ async def process_wallet(wallet):
                     logger.error(f"{wallet.address} | Wallet restore failed. Skipping.")
                     return
 
-            unlocked = await trade.unlock_wallet_if_needed()
-            if not unlocked:
-                logger.error(f"{wallet.address} | Failed to unlock wallet. Skipping.")
-                return
+                connected = await trade.connect_wallet()
+                if not connected:
+                    logger.warning(f"{wallet.address} | Wallet connection failed. Skipping.")
+                    return
 
-            # Продажа токенов
+            # Если профиль существует, разблокируем кошелек
+            else:
+                unlocked = await trade.unlock_wallet_if_needed()
+                if not unlocked:
+                    logger.error(f"{wallet.address} | Failed to unlock wallet. Skipping.")
+                    return
+
+            # Устанавливаем настройки (Fast) перед продажей
+            if settings.fast:
+                await trade.set_fast_transactions()
+
+            # Продажа SOL
             sold_sol = await trade.sell_token("SOL", amount=settings.sol_to_sell)
             if not sold_sol:
                 logger.info(f"{wallet.address} | Skipping USDC sale as SOL sale was not performed.")
                 return
 
+            # Продажа USDC
             await trade.sell_token("USDC", amount=settings.usdc_to_sell)
 
         except Exception as e:
